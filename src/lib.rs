@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 #[derive(Error, std::fmt::Debug)]
 pub enum PoolError {
@@ -14,17 +15,18 @@ pub enum PoolError {
 }
 
 #[derive(Clone)]
-pub struct Pool<T> {
+pub struct Pool<F, T> {
     object_bucket: Receiver<T>,
     object_return: Sender<T>,
+    extend_fn: F,
 }
 
-impl<T> Pool<T> {
+impl<F, T: std::marker::Send> Pool<Arc<F>, T>
+where
+    F: Fn() -> T + std::marker::Send + std::marker::Sync + 'static + ?Sized,
+{
     #[inline]
-    pub fn new<F>(initial_capacity: usize, init: F) -> Pool<T>
-    where
-        F: Fn() -> T,
-    {
+    pub fn new(initial_capacity: usize, init: Arc<F>) -> Self {
         let (s, r) = unbounded();
 
         for _ in 0..initial_capacity {
@@ -34,6 +36,7 @@ impl<T> Pool<T> {
         Pool {
             object_bucket: r,
             object_return: s,
+            extend_fn: init,
         }
     }
 
@@ -77,6 +80,11 @@ impl<T> Pool<T> {
         self.object_return
             .try_send(t)
             .map_err(|_| PoolError::AttachError)
+    }
+
+    #[inline]
+    pub fn expand(&mut self) -> Result<(), PoolError> {
+        self.try_attach((self.extend_fn)())
     }
 }
 
