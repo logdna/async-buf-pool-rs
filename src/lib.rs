@@ -116,6 +116,10 @@ impl<'a, T> Reusable<T> {
         }
     }
 
+    pub fn get_mut(&mut self) -> &mut T {
+        self.data.deref_mut()
+    }
+
     #[inline]
     pub fn detach(mut self) -> (Sender<T>, T) {
         (self.pool.clone(), unsafe { self.take() })
