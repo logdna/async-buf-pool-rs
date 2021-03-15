@@ -14,11 +14,23 @@ pub enum PoolError {
     NoBuffersAvailable,
 }
 
-#[derive(Clone)]
 pub struct Pool<F, T> {
     object_bucket: Receiver<T>,
     object_return: Sender<T>,
     extend_fn: F,
+}
+
+impl<F, T> Clone for Pool<F, T>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Pool {
+            object_bucket: self.object_bucket.clone(),
+            object_return: self.object_return.clone(),
+            extend_fn: self.extend_fn.clone(),
+        }
+    }
 }
 
 impl<F, T: std::marker::Send> Pool<Arc<F>, T>
