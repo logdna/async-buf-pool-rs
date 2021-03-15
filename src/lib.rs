@@ -6,6 +6,8 @@ use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
+use bytes::buf::Buf;
+
 #[derive(Error, std::fmt::Debug)]
 pub enum PoolError {
     #[error("Failed to attach object to pool")]
@@ -149,5 +151,31 @@ impl<'a, T> Drop for Reusable<T> {
             Ok(_) => {}
             Err(e) => drop(e),
         };
+    }
+}
+
+impl<T> std::convert::AsRef<[u8]> for Reusable<T>
+where
+    T: std::convert::AsRef<[u8]>,
+{
+    fn as_ref(&self) -> &[u8] {
+        self.data.as_ref()
+    }
+}
+
+impl<T> Buf for Reusable<T>
+where
+    T: Buf,
+{
+    fn remaining(&self) -> usize {
+        self.data.remaining()
+    }
+
+    fn bytes(&self) -> &[u8] {
+        self.data.bytes()
+    }
+
+    fn advance(&mut self, cnt: usize) {
+        self.data.advance(cnt)
     }
 }
