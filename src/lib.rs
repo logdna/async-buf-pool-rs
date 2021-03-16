@@ -1,4 +1,4 @@
-use async_channel::unbounded;
+use async_channel::{bounded, unbounded};
 use async_channel::{Receiver, Sender};
 use thiserror::Error;
 
@@ -46,6 +46,30 @@ where
     #[inline]
     pub fn new(initial_capacity: usize, init: Arc<F>) -> Self {
         let (s, r) = unbounded();
+
+        for _ in 0..initial_capacity {
+            s.try_send(init()).expect("Pool is closed");
+        }
+
+        Pool {
+            object_bucket: r,
+            object_return: s,
+            extend_fn: init,
+        }
+    }
+
+    /// Create a Pool with a limited reserve capacity unused objects
+    ///
+    /// If the Pool of available objects reaches the maximum reserve capacity
+    /// any additional Reusable handles that are dropped will drop their
+    /// internal object rather than returning it to the pool
+    #[inline]
+    pub fn with_max_reserve(
+        initial_capacity: usize,
+        max_reserve_capacity: usize,
+        init: Arc<F>,
+    ) -> Self {
+        let (s, r) = bounded(max_reserve_capacity);
 
         for _ in 0..initial_capacity {
             s.try_send(init()).expect("Pool is closed");
@@ -110,7 +134,7 @@ pub struct Reusable<T: ClearBuf> {
     pool: Sender<T>,
     data: ManuallyDrop<T>,
     // Is there something in data to drop?
-    present: bool
+    present: bool,
 }
 
 impl<'a, T: ClearBuf> Reusable<T> {
@@ -119,7 +143,7 @@ impl<'a, T: ClearBuf> Reusable<T> {
         Self {
             pool,
             data: ManuallyDrop::new(t),
-            present: true
+            present: true,
         }
     }
 
