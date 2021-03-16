@@ -109,6 +109,8 @@ where
 pub struct Reusable<T: ClearBuf> {
     pool: Sender<T>,
     data: ManuallyDrop<T>,
+    // Is there something in data to drop?
+    present: bool
 }
 
 impl<'a, T: ClearBuf> Reusable<T> {
@@ -117,6 +119,7 @@ impl<'a, T: ClearBuf> Reusable<T> {
         Self {
             pool,
             data: ManuallyDrop::new(t),
+            present: true
         }
     }
 
@@ -129,7 +132,13 @@ impl<'a, T: ClearBuf> Reusable<T> {
         (self.pool.clone(), unsafe { self.take() })
     }
 
+    #[inline]
+    pub fn into_inner(mut self) -> T {
+        unsafe { self.take() }
+    }
+
     unsafe fn take(&mut self) -> T {
+        self.present = false;
         ManuallyDrop::take(&mut self.data)
     }
 }
@@ -153,13 +162,15 @@ impl<'a, T: ClearBuf> DerefMut for Reusable<T> {
 impl<'a, T: ClearBuf> Drop for Reusable<T> {
     #[inline]
     fn drop(&mut self) {
-        let mut obj = unsafe { self.take() };
-        // If we can't put it back on the pool drop it
-        obj.clear();
-        match self.pool.try_send(obj) {
-            Ok(_) => {}
-            Err(e) => drop(e),
-        };
+        if self.present {
+            let mut obj = unsafe { self.take() };
+            // If we can't put it back on the pool drop it
+            obj.clear();
+            match self.pool.try_send(obj) {
+                Ok(_) => {}
+                Err(e) => drop(e),
+            };
+        }
     }
 }
 
