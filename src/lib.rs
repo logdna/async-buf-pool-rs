@@ -16,6 +16,10 @@ pub enum PoolError {
     NoBuffersAvailable,
 }
 
+pub trait ClearBuf {
+    fn clear(&mut self);
+}
+
 pub struct Pool<F, T> {
     object_bucket: Receiver<T>,
     object_return: Sender<T>,
@@ -35,7 +39,7 @@ where
     }
 }
 
-impl<F, T: std::marker::Send> Pool<Arc<F>, T>
+impl<F, T: ClearBuf + std::marker::Send> Pool<Arc<F>, T>
 where
     F: Fn() -> T + std::marker::Send + std::marker::Sync + 'static + ?Sized,
 {
@@ -102,12 +106,12 @@ where
     }
 }
 
-pub struct Reusable<T> {
+pub struct Reusable<T: ClearBuf> {
     pool: Sender<T>,
     data: ManuallyDrop<T>,
 }
 
-impl<'a, T> Reusable<T> {
+impl<'a, T: ClearBuf> Reusable<T> {
     #[inline]
     pub fn new(pool: Sender<T>, t: T) -> Self {
         Self {
@@ -130,7 +134,7 @@ impl<'a, T> Reusable<T> {
     }
 }
 
-impl<'a, T> Deref for Reusable<T> {
+impl<'a, T: ClearBuf> Deref for Reusable<T> {
     type Target = T;
 
     #[inline]
@@ -139,18 +143,19 @@ impl<'a, T> Deref for Reusable<T> {
     }
 }
 
-impl<'a, T> DerefMut for Reusable<T> {
+impl<'a, T: ClearBuf> DerefMut for Reusable<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }
 }
 
-impl<'a, T> Drop for Reusable<T> {
+impl<'a, T: ClearBuf> Drop for Reusable<T> {
     #[inline]
     fn drop(&mut self) {
-        let obj = unsafe { self.take() };
+        let mut obj = unsafe { self.take() };
         // If we can't put it back on the pool drop it
+        obj.clear();
         match self.pool.try_send(obj) {
             Ok(_) => {}
             Err(e) => drop(e),
@@ -160,14 +165,14 @@ impl<'a, T> Drop for Reusable<T> {
 
 impl<T> std::convert::AsRef<[u8]> for Reusable<T>
 where
-    T: std::convert::AsRef<[u8]>,
+    T: std::convert::AsRef<[u8]> + ClearBuf,
 {
     fn as_ref(&self) -> &[u8] {
         self.data.as_ref()
     }
 }
 
-impl<T> Buf for Reusable<T>
+impl<T: ClearBuf> Buf for Reusable<T>
 where
     T: Buf,
 {
