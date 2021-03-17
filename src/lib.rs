@@ -14,6 +14,8 @@ pub enum PoolError {
     AttachError,
     #[error("No buffers available in pool")]
     NoBuffersAvailable,
+    #[error("Initial Capacity larger than Max Reserve Capacity")]
+    InitError(usize, usize),
 }
 
 pub trait ClearBuf {
@@ -68,18 +70,21 @@ where
         initial_capacity: usize,
         max_reserve_capacity: usize,
         init: Arc<F>,
-    ) -> Self {
+    ) -> Result<Self, PoolError> {
+        if max_reserve_capacity < initial_capacity {
+            return Err(PoolError::InitError(initial_capacity, max_reserve_capacity));
+        }
         let (s, r) = bounded(max_reserve_capacity);
 
         for _ in 0..initial_capacity {
             s.try_send(init()).expect("Pool is closed");
         }
 
-        Pool {
+        Ok(Pool {
             object_bucket: r,
             object_return: s,
             extend_fn: init,
-        }
+        })
     }
 
     #[inline]
