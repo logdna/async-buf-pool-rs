@@ -220,8 +220,8 @@ where
         self.data.remaining()
     }
 
-    fn bytes(&self) -> &[u8] {
-        self.data.bytes()
+    fn chunk(&self) -> &[u8] {
+        self.data.chunk()
     }
 
     fn advance(&mut self, cnt: usize) {
